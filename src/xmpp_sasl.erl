@@ -52,7 +52,7 @@
 			xmpp_sasl_plain:error_reason() |
 			xmpp_sasl_scram:error_reason() |
 			unsupported_mechanism | nodeprep_failed |
-			empty_username | aborted.
+			empty_username | aborted | account_disabled.
 
 -export_type([mechanism/0, error_reason/0,
 	      sasl_state/0, sasl_return/0, sasl_property/0]).
@@ -69,6 +69,8 @@
 -spec format_error(mechanism(), error_reason()) -> {atom(), binary()}.
 format_error(_, unsupported_mechanism) ->
     {'invalid-mechanism', <<"Unsupported mechanism">>};
+format_error(_, account_disabled) ->
+	{'account-disabled', <<"Access denied by service policy">>};
 format_error(_, nodeprep_failed) ->
     {'bad-protocol', <<"Nodeprep failed">>};
 format_error(_, empty_username) ->
@@ -145,9 +147,18 @@ check_credentials(Props) ->
     case jid:nodeprep(User) of
 	error -> {error, nodeprep_failed};
 	<<"">> -> {error, empty_username};
-	_LUser -> ok
+	_LUser ->
+		case check_user_enabled(_LUser) of
+			true -> ok;
+			false -> {error, account_disabled};
+			error -> {error, not_authorized}
+		end
     end.
-
+check_user_enabled(User) ->
+	case erlang:function_exported(mod_cp_profile, user_enabled_callback, 1) of
+		true -> mod_cp_profile:user_enabled_callback(User);
+		false -> true
+	end.
 -spec get_mod(binary()) -> sasl_module() | undefined.
 get_mod(<<"ANONYMOUS">>) -> xmpp_sasl_anonymous;
 get_mod(<<"DIGEST-MD5">>) -> xmpp_sasl_digest;    
